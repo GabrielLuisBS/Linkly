@@ -10,6 +10,12 @@
     "dev:front": "npm run dev -w front",
     "dev:back": "npm run dev -w back",
     "build:front": "npm run build -w front",
-    "build:back": "npm run build -w back"
+    "build:back": "npm run build -w back",
+    "test:front": "npm run test -w front",
+    "test:back": "npm run test -w back",
+    "test": "npm run test:back && npm run test:front"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.0"
   }
 }

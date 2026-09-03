@@ -12,7 +12,9 @@
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "start:worker": "node dist/workers/click.worker.js",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
@@ -38,6 +40,7 @@
     "autocannon": "^8.0.0",
     "prisma": "^7.9.1",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^5.0.0"
   }
 }

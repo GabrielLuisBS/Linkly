@@ -71,6 +71,19 @@ npm run dev:front  # front em http://localhost:5173
 
 `RESEND_API_KEY` é opcional em dev: sem ela, o e-mail de verificação de conta não é enviado de verdade — o link fica só logado no console do servidor, suficiente para testar o fluxo sem depender do Resend.
 
+## Testes
+
+[Vitest](https://vitest.dev) nos dois workspaces. Testes ficam junto do arquivo que testam (`slug.ts` → `slug.test.ts`), não numa pasta separada.
+
+```bash
+npm run test          # back + front
+npm run test:back     # só o back
+npm run test:front    # só o front (jsdom + React Testing Library)
+npm run test:watch -w back    # modo watch, um workspace por vez
+```
+
+Testes de `back` são só unitários por enquanto (lógica pura, sem tocar Postgres/Redis de verdade) — nada de banco de teste configurado ainda.
+
 ## Estrutura do back
 
 ```
