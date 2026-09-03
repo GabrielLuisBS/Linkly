@@ -25,4 +25,21 @@ describe("evaluate", () => {
       urlDestino: link.urlDestino,
     });
   });
+
+  it("link ativo mas expirado retorna gone", () => {
+    const link: CachedLink = {
+      linkId: "1",
+      urlDestino: "https://exemplo.com",
+      ativo: true,
+      // Data fixa no passado, não Date.now() - X: com "- X" o teste ainda
+      // depende do relógio no momento em que roda (basta trocar o sinal
+      // por engano, ou o "X" ser pequeno demais, pra virar uma data no
+      // futuro sem querer — exatamente o oposto do que este teste quer
+      // garantir). Fixando um ano bem no passado, o teste sempre expira,
+      // não importa quando for executado.
+      expiraEm: "2020-01-01T00:00:00.000Z",
+    };
+
+    expect(evaluate(link)).toEqual({ status: "gone" });
+  });
 });
