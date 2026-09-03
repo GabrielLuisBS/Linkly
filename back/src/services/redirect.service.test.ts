@@ -1,0 +1,28 @@
+import { describe, expect, it, vi } from "vitest";
+
+// redirect.service.ts importa cache.service.ts, que importa db/redis.js —
+// e esse módulo abre uma conexão TCP de verdade só de ser importado (o
+// construtor do ioredis já tenta conectar). Sem mockar, rodar este teste
+// tentaria conectar num Redis real (e falharia, sem REDIS_URL) mesmo sem
+// nenhum teste chamar get/set/del — evaluate() é pura, nunca toca o Redis.
+vi.mock("../db/redis.js", () => ({ redis: {} }));
+
+import { evaluate } from "./redirect.service.js";
+import type { CachedLink } from "./cache.service.js";
+
+describe("evaluate", () => {
+  it("link ativo e não expirado retorna ok", () => {
+    const link: CachedLink = {
+      linkId: "1",
+      urlDestino: "https://exemplo.com",
+      ativo: true,
+      expiraEm: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+
+    expect(evaluate(link)).toEqual({
+      status: "ok",
+      linkId: link.linkId,
+      urlDestino: link.urlDestino,
+    });
+  });
+});

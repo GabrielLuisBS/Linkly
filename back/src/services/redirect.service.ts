@@ -18,7 +18,7 @@ function isExpired(expiraEm: string | null): boolean {
  * ainda está com cache quente. Ver "Por que checar ativo e expiraEm mesmo
  * com cache quente" na nota "Redirecionamento" do Obsidian.
  */
-function evaluate(data: CachedLink): ResolveLinkResult {
+export function evaluate(data: CachedLink): ResolveLinkResult {
   if (!data.ativo || isExpired(data.expiraEm)) {
     return { status: "gone" };
   }

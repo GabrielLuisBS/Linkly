@@ -73,16 +73,35 @@ npm run dev:front  # front em http://localhost:5173
 
 ## Testes
 
-[Vitest](https://vitest.dev) nos dois workspaces. Testes ficam junto do arquivo que testam (`slug.ts` → `slug.test.ts`), não numa pasta separada.
+[Vitest](https://vitest.dev) nos dois workspaces, cada um com sua própria config e seu próprio ambiente de execução — não tem suíte compartilhada na raiz.
+
+### Convenção: teste ao lado do código
+
+Testes ficam junto do arquivo que testam (`slug.ts` → `slug.test.ts`), não numa pasta `__tests__` separada. Isso é o `include` de cada `vitest.config.ts` (`src/**/*.test.ts` no back, `src/**/*.test.{ts,tsx}` no front) — qualquer arquivo `*.test.ts(x)` dentro de `src/` é pego automaticamente, não precisa registrar em lugar nenhum. A vantagem prática: abrindo um arquivo, o teste dele está na mesma pasta; e um arquivo sem `.test.ts` do lado é visivelmente um arquivo sem teste.
+
+### Back (`back/vitest.config.ts`)
+
+- `environment: "node"` — não precisa de DOM.
+- Testam **lógica pura**: funções que recebem entrada e devolvem saída, sem tocar Postgres/Redis de verdade (ex.: [`slug.test.ts`](back/src/services/slug.test.ts), que cobre `isValidSlugFormat` — formato aceito pelo `nanoid`, limite de 16 caracteres do `VarChar(16)` do schema, caracteres fora do alfabeto). Não tem banco de teste configurado ainda, então services que dependem do Prisma/Redis (ex. `link.service.ts`, `redirect.service.ts`) não têm cobertura por enquanto.
+- `back/tsconfig.json` tem `"exclude": ["src/**/*.test.ts"]` — sem isso, o `npm run build` (que roda `tsc`) compilava os testes junto pro `dist/` de produção. O Vitest não usa esse `tsconfig` pra rodar os testes (ele tem o próprio pipeline via esbuild), então o `exclude` só afeta o build, não os testes.
+
+### Front (`front/vitest.config.ts`)
+
+- Reaproveita o `vite.config.ts` do projeto via `mergeConfig`, então os testes enxergam os mesmos aliases/plugins do app (ex. `@vitejs/plugin-react`) — sem isso, teria que duplicar configuração.
+- `environment: "jsdom"` — simula DOM no Node, necessário pra `@testing-library/react` conseguir montar componentes.
+- `setupFiles: ["./vitest.setup.ts"]` carrega `@testing-library/jest-dom/vitest` antes de cada arquivo de teste, o que habilita matchers como `.toBeInTheDocument()`.
+- Testam por enquanto só **funções puras de `src/lib`** (ex.: [`format.test.ts`](front/src/lib/format.test.ts), cobrindo `stripProtocol` e `computeLinkStatus` — inclusive a regra de que "desativado" tem prioridade sobre "expirado"). Nenhum componente React tem teste ainda, apesar da infraestrutura (`jsdom` + Testing Library) já estar pronta pra isso.
+
+### Rodando
 
 ```bash
-npm run test          # back + front
+npm run test          # back + front, em sequência
 npm run test:back     # só o back
-npm run test:front    # só o front (jsdom + React Testing Library)
-npm run test:watch -w back    # modo watch, um workspace por vez
+npm run test:front    # só o front
+npm run test:watch -w back    # modo watch, um workspace por vez (mesma flag em front)
 ```
 
-Testes de `back` são só unitários por enquanto (lógica pura, sem tocar Postgres/Redis de verdade) — nada de banco de teste configurado ainda.
+`npm run test` (raiz) roda `test:back` só e depois `test:front` — se o back falhar, o front nem chega a rodar (`&&` na definição do script).
 
 ## Estrutura do back
 
