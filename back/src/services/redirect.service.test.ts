@@ -42,4 +42,18 @@ describe("evaluate", () => {
 
     expect(evaluate(link)).toEqual({ status: "gone" });
   });
+
+  it("link desativado retorna gone, mesmo sem estar expirado", () => {
+    const link: CachedLink = {
+      linkId: "1",
+      urlDestino: "https://exemplo.com",
+      ativo: false,
+      // Sem expiração nenhuma (null) de propósito: se este teste passasse
+      // só por causa de expiraEm, ele não provaria nada sobre `ativo`. O
+      // link só cai aqui por causa do `!data.ativo` em evaluate().
+      expiraEm: null,
+    };
+
+    expect(evaluate(link)).toEqual({ status: "gone" });
+  });
 });
