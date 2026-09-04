@@ -1,14 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 
-// redirect.service.ts importa cache.service.ts, que importa db/redis.js —
-// e esse módulo abre uma conexão TCP de verdade só de ser importado (o
-// construtor do ioredis já tenta conectar). Sem mockar, rodar este teste
-// tentaria conectar num Redis real (e falharia, sem REDIS_URL) mesmo sem
-// nenhum teste chamar get/set/del — evaluate() é pura, nunca toca o Redis.
-vi.mock("../db/redis.js", () => ({ redis: {} }));
+// Mocka cache.service.ts inteiro (não só db/redis.js): como resolveLink()
+// (testado mais abaixo) decide entre cache HIT e MISS chamando
+// cacheService.get() diretamente, o teste precisa controlar o que esse
+// get() devolve. Mockando o módulo inteiro, o cache.service.ts real (e a
+// conexão de verdade com o Redis que ele abriria via db/redis.js) nunca
+// chega a ser importado — resolve de graça o mesmo problema de conexão
+// TCP indevida que apareceu nos testes anteriores de evaluate().
+vi.mock("./cache.service.js", () => ({
+  cacheService: { get: vi.fn(), set: vi.fn(), del: vi.fn() },
+}));
 
-import { evaluate } from "./redirect.service.js";
-import type { CachedLink } from "./cache.service.js";
+// O outro lado do cache-aside: troca o linkRepository de verdade (Postgres
+// via Prisma) por um fake, só pra poder espiar se foi chamado ou não —
+// mesma técnica de [[link.service.test.ts]], aqui usada pra provar uma
+// ausência de chamada, não um valor de retorno.
+vi.mock("../repositories/link.repository.js", () => ({
+  linkRepository: { findBySlug: vi.fn() },
+}));
+
+import { evaluate, redirectService } from "./redirect.service.js";
+import { cacheService, type CachedLink } from "./cache.service.js";
+import { linkRepository } from "../repositories/link.repository.js";
 
 describe("evaluate", () => {
   it("link ativo e não expirado retorna ok", () => {
@@ -55,5 +68,36 @@ describe("evaluate", () => {
     };
 
     expect(evaluate(link)).toEqual({ status: "gone" });
+  });
+});
+
+describe("resolveLink", () => {
+  it("cache HIT nunca consulta o repository", async () => {
+    const cached: CachedLink = {
+      linkId: "1",
+      urlDestino: "https://exemplo.com",
+      ativo: true,
+      expiraEm: null,
+    };
+    // Arrange: cacheService.get() devolve um link válido, como se o Redis
+    // tivesse a chave link:{slug} quente — simula o HIT sem Redis nenhum
+    // rodando de verdade.
+    vi.mocked(cacheService.get).mockResolvedValue(cached);
+
+    // Act
+    const result = await redirectService.resolveLink("abc123");
+
+    // Assert: o resultado usa o dado do cache...
+    expect(result).toEqual({
+      status: "ok",
+      linkId: cached.linkId,
+      urlDestino: cached.urlDestino,
+    });
+    // ...e a prova de que resolveLink() de fato tomou o atalho do cache
+    // (não é só "o resultado bateu por coincidência"): o repository nunca
+    // foi chamado. Se o `if (cached) return evaluate(cached)` de
+    // resolveLink() fosse removido ou quebrado, este teste falharia aqui
+    // mesmo que o resultado acima continuasse correto por acaso.
+    expect(linkRepository.findBySlug).not.toHaveBeenCalled();
   });
 });
