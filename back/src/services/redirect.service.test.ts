@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mocka cache.service.ts inteiro (não só db/redis.js): como resolveLink()
 // (testado mais abaixo) decide entre cache HIT e MISS chamando
@@ -22,6 +22,20 @@ vi.mock("../repositories/link.repository.js", () => ({
 import { evaluate, redirectService } from "./redirect.service.js";
 import { cacheService, type CachedLink } from "./cache.service.js";
 import { linkRepository } from "../repositories/link.repository.js";
+import type { Link } from "../generated/prisma/client.js";
+
+function fakeLink(overrides: Partial<Link> = {}): Link {
+  return {
+    id: "1",
+    slug: "abc123",
+    urlDestino: "https://exemplo.com",
+    ativo: true,
+    expiraEm: null,
+    criadoEm: new Date(),
+    usuarioId: null,
+    ...overrides,
+  };
+}
 
 describe("evaluate", () => {
   it("link ativo e não expirado retorna ok", () => {
@@ -72,6 +86,27 @@ describe("evaluate", () => {
 });
 
 describe("resolveLink", () => {
+  // vi.mock() cria os vi.fn() de cacheService/linkRepository UMA vez só,
+  // reaproveitados por todo teste deste arquivo. Verificado na prática
+  // (removendo este beforeEach e checando .mock.calls em runtime): o
+  // HISTÓRICO de chamadas já vem zerado sozinho a cada teste, porque este
+  // projeto roda com `clearMocks: true` — o padrão do próprio Vitest 5
+  // (confirmado em node_modules/vitest/dist/config.cjs), não algo
+  // configurado aqui.
+  //
+  // Mas `mockReset` é `false` por padrão — só o histórico é limpo, não a
+  // IMPLEMENTAÇÃO (o que mockResolvedValue configurou). Se um teste
+  // futuro esquecer de programar o próprio retorno de cacheService.get ou
+  // linkRepository.findBySlug, ele herdaria em silêncio o valor deixado
+  // pelo teste anterior — um resultado "certo" por acidente, não porque o
+  // teste provou nada. vi.resetAllMocks() zera as duas coisas
+  // (histórico E implementação): esquecer de programar um mock aqui vira
+  // erro visível (undefined onde se esperava um link), não um falso
+  // positivo silencioso.
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
   it("cache HIT nunca consulta o repository", async () => {
     const cached: CachedLink = {
       linkId: "1",
@@ -99,5 +134,39 @@ describe("resolveLink", () => {
     // resolveLink() fosse removido ou quebrado, este teste falharia aqui
     // mesmo que o resultado acima continuasse correto por acaso.
     expect(linkRepository.findBySlug).not.toHaveBeenCalled();
+  });
+
+  it("cache MISS com link válido consulta o repository e grava no cache", async () => {
+    // Arrange: cache vazio (MISS) força a ida ao repository.
+    vi.mocked(cacheService.get).mockResolvedValue(null);
+    const link = fakeLink();
+    vi.mocked(linkRepository.findBySlug).mockResolvedValue(link);
+
+    // Act
+    const result = await redirectService.resolveLink("abc123");
+
+    // Assert
+    expect(result).toEqual({ status: "ok", linkId: link.id, urlDestino: link.urlDestino });
+    expect(linkRepository.findBySlug).toHaveBeenCalledTimes(1);
+    expect(linkRepository.findBySlug).toHaveBeenCalledWith("abc123");
+    // resolveLink só grava no Redis quando o resultado é "ok" (ver
+    // redirect.service.ts) — um link válido vindo do MISS precisa ficar
+    // cacheado pro próximo GET/:slug já bater HIT.
+    expect(cacheService.set).toHaveBeenCalledTimes(1);
+  });
+
+  it("cache MISS com slug inexistente retorna not_found, sem cachear", async () => {
+    // Arrange: cache vazio e repository também não encontra nada.
+    vi.mocked(cacheService.get).mockResolvedValue(null);
+    vi.mocked(linkRepository.findBySlug).mockResolvedValue(null);
+
+    // Act
+    const result = await redirectService.resolveLink("nao-existe");
+
+    // Assert
+    expect(result).toEqual({ status: "not_found" });
+    expect(linkRepository.findBySlug).toHaveBeenCalledTimes(1);
+    // Nada pra cachear quando o link nem existe.
+    expect(cacheService.set).not.toHaveBeenCalled();
   });
 });
